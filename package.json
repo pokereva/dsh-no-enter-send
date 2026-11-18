@@ -1,7 +1,7 @@
 {
   "name": "dsh-no-enter-send",
-  "version": "1.1.0",
-  "description": "Enter inserts a line break instead of sending in the DSH composer — until the pointer rests on the send button, where Enter sends again and a highlighted \"Enter to send\" hint lights up.",
+  "version": "1.2.0",
+  "description": "Enter inserts a line break instead of sending in the DSH composer and the hint reads \"Enter is blocked\" — until the pointer rests on the send button, where Enter sends again and the hint turns into a highlighted \"Press Enter to send\".",
   "keywords": [
     "deepseek",
     "harness",

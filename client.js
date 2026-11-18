@@ -21,8 +21,10 @@
  * Two hint surfaces that never fight for space and never lie:
  *   - the ghost suffix on the composer's own placeholder line, which speaks for
  *     the inside of the box and therefore says what Enter does there (new line);
- *   - the pill in the toolbar next to the send button, which advertises the
- *     Enter-to-send affordance and lights up solid the moment it is armed.
+ *   - the pill in the toolbar next to the send button, which names the *current*
+ *     outcome — "Enter is blocked" while Enter really is blocked, and
+ *     "press Enter to send" the moment the pointer arms it — and lights up solid
+ *     in that armed state.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-no-enter-send',
@@ -31,8 +33,12 @@ window.__ModuleLoader__.load({
 
     const { createElement: h } = require('react');
     const STYLE_ID = 'dsh-no-enter-send';
-    const HINT_ZH = 'Enter发送';
-    const HINT_EN = 'Enter to send';
+    /* Idle: what Enter does while the pointer is anywhere but the send button. */
+    const IDLE_ZH = '已屏蔽Enter发送';
+    const IDLE_EN = 'Enter is blocked';
+    /* Armed: the pointer rests on the send button, so Enter sends again. */
+    const ARMED_ZH = '点击Enter发送';
+    const ARMED_EN = 'Press Enter to send';
     const NEWLINE_ZH = 'Enter 换行';
     const NEWLINE_EN = 'Enter = new line';
     const HINT_CLASS = 'dsnes-hint';
@@ -46,6 +52,15 @@ window.__ModuleLoader__.load({
      * aria-busy. CSS module class names are hashed and must not be used.
      */
     const SEND_SELECTOR = '[data-composer-card] button[aria-busy]:not([aria-haspopup])';
+
+    /*
+     * The armed state is decided by CSS, not by JavaScript: as soon as the
+     * pointer rests on an enabled send button, the caption swaps its text and
+     * lights up. `:has()` is evaluated live by the engine, so no listener and no
+     * component state are involved, and a disabled button never arms.
+     */
+    const ARMED_SELECTOR = '[data-composer-card]:has(button[aria-busy]:not([aria-haspopup]):not(:disabled):hover)';
+
 
     const state = { synthetic: false };
 
@@ -61,7 +76,11 @@ window.__ModuleLoader__.load({
     }
 
     function hintText() {
-      return isEnglish() ? HINT_EN : HINT_ZH;
+      return isEnglish() ? IDLE_EN : IDLE_ZH;
+    }
+
+    function armedText() {
+      return isEnglish() ? ARMED_EN : ARMED_ZH;
     }
 
     function newlineText() {
@@ -81,9 +100,14 @@ window.__ModuleLoader__.load({
      * `:lang()` lets the browser re-evaluate it whenever the attribute changes,
      * and keeps every hint surface in the same language at all times.
      *
-     * The armed state is pure CSS (`:has()` over the hovering button) so the pill
-     * can brighten without React re-rendering the slot, and so it matches the
-     * keydown check — which also refuses to arm on a disabled button.
+     * The caption swaps wording with the pointer: idle, it says Enter is blocked
+     * (which is exactly what happens); armed, it says pressing Enter sends. Both
+     * labels are stacked in the same grid cell and the hidden one only drops to
+     * `visibility: hidden`, so the pill is as wide as the longer of the two and
+     * nothing reflows while the pointer travels. The swap itself is pure CSS
+     * (`:has()` over the hovering button), so it needs neither a React
+     * re-render nor a listener, and it matches the keydown check — which also
+     * refuses to arm on a disabled button.
      */
     function cssText() {
       return [
@@ -97,9 +121,9 @@ window.__ModuleLoader__.load({
         '  content: " · ' + quote(NEWLINE_ZH) + '";',
         '}',
         '',
-        '/* Toolbar pill next to the send button: the Enter-to-send affordance. */',
+        '/* Toolbar caption next to the send button: names the current outcome. */',
         '.' + HINT_CLASS + ' {',
-        '  display: inline-flex;',
+        '  display: inline-grid;',
         '  align-items: center;',
         '  font-family: var(--dsw-font-family);',
         '  font-size: 12px;',
@@ -111,22 +135,39 @@ window.__ModuleLoader__.load({
         '  pointer-events: none;',
         '  padding: 0 8px;',
         '  border-radius: 999px;',
-        '  color: var(--dsw-alias-button-info-fill, #3964fe);',
-        '  background: rgba(57, 100, 254, 0.12);',
-        '  background: color-mix(in srgb, var(--dsw-alias-button-info-fill, #3964fe) 14%, transparent);',
+        '  color: var(--dsw-alias-label-caption, #6b7280);',
         '  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;',
         '}',
+        '/* Both labels share one grid cell, so the pill never resizes on swap. */',
+        '.' + HINT_CLASS + '::before, .' + HINT_CLASS + '::after {',
+        '  grid-area: 1 / 1;',
+        '  transition: opacity 120ms ease;',
+        '}',
+        '',
+        '/* Idle wording: Enter is blocked, and the pill stays quiet and gray. */',
+        '.' + HINT_CLASS + '::before { content: "' + quote(IDLE_EN) + '"; }',
+        '.' + HINT_CLASS + ':lang(zh)::before { content: "' + quote(IDLE_ZH) + '"; }',
+        '',
+        '/* Armed wording: the pointer is on the send button, so Enter sends. */',
+        '.' + HINT_CLASS + '::after {',
+        '  content: "' + quote(ARMED_EN) + '";',
+        '  opacity: 0;',
+        '  visibility: hidden;',
+        '}',
+        '.' + HINT_CLASS + ':lang(zh)::after { content: "' + quote(ARMED_ZH) + '"; }',
         '',
         '/* Armed: the pointer is on an enabled send button, so Enter really sends. */',
-        '[data-composer-card]:has(button[aria-busy]:not([aria-haspopup]):not(:disabled):hover) .' + HINT_CLASS + ' {',
+        ARMED_SELECTOR + ' .' + HINT_CLASS + ' {',
         '  color: var(--dsw-alias-label-on-color, #ffffff);',
         '  background: var(--dsw-alias-button-info-fill, #3964fe);',
         '  box-shadow: 0 0 0 3px rgba(57, 100, 254, 0.26);',
         '  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-button-info-fill, #3964fe) 26%, transparent);',
         '}',
+        ARMED_SELECTOR + ' .' + HINT_CLASS + '::before { opacity: 0; visibility: hidden; }',
+        ARMED_SELECTOR + ' .' + HINT_CLASS + '::after { opacity: 1; visibility: visible; }',
         '',
         '@media (prefers-reduced-motion: no-preference) {',
-        '  [data-composer-card]:has(button[aria-busy]:not([aria-haspopup]):not(:disabled):hover) .' + HINT_CLASS + ' {',
+        '  ' + ARMED_SELECTOR + ' .' + HINT_CLASS + ' {',
         '    animation: dsnes-pop 160ms ease-out;',
         '  }',
         '}',
@@ -300,8 +341,17 @@ window.__ModuleLoader__.load({
       insertLineBreak(input);
     }
 
+    /*
+     * The caption renders no text nodes at all: both labels come from `::before`
+     * / `::after` rules keyed on :lang(), so the wording follows
+     * documentElement.lang live instead of freezing whichever language was
+     * active at load time. The two pseudo-elements stack in one grid cell, so the
+     * pill is already as wide as the longer label and nothing reflows on swap.
+     * aria-hidden keeps it out of the accessibility tree — it is decoration, and
+     * the send button already announces itself.
+     */
     function HintCaption() {
-      return h('span', { className: HINT_CLASS, 'aria-hidden': 'true' }, hintText());
+      return h('span', { className: HINT_CLASS, 'aria-hidden': 'true' });
     }
 
     return {
@@ -329,8 +379,9 @@ window.__ModuleLoader__.load({
 
         if (typeof window !== 'undefined' && window !== null) {
           window.__dshNoEnterSend = {
-            version: 2,
+            version: 3,
             hint: hintText,
+            armed: armedText,
             newline: newlineText,
             hover: hoverSends,
             button: sendButton,

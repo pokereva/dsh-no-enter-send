@@ -356,6 +356,18 @@ check('样式必须禁用指针事件', css.indexOf('pointer-events: none') >= 0
 check('占位符提示必须按语言分别声明', css.indexOf('[data-composer-placeholder]:lang(zh)::after') >= 0);
 check('占位符英文提示必须内置', css.indexOf('Enter = new line') >= 0);
 check('占位符中文提示必须内置', css.indexOf('Enter 换行') >= 0);
+/* The caption must name the outcome, not just advertise a feature: "blocked"
+   while idle, "press Enter to send" once the pointer arms it. Both wordings are
+   CSS content keyed on :lang(), so they follow the language live. */
+check('空闲文案必须说明 Enter 被屏蔽', css.indexOf('已屏蔽Enter发送') >= 0);
+check('空闲英文文案必须内置', css.indexOf('Enter is blocked') >= 0);
+check('武装文案必须说明按 Enter 发送', css.indexOf('点击Enter发送') >= 0);
+check('武装英文文案必须内置', css.indexOf('Press Enter to send') >= 0);
+check('空闲文案必须按语言分别声明', css.indexOf('.dsnes-hint:lang(zh)::before') >= 0);
+check('武装文案必须按语言分别声明', css.indexOf('.dsnes-hint:lang(zh)::after') >= 0);
+check('两份文案必须叠在同一格以避免抖动', css.indexOf('grid-area: 1 / 1') >= 0);
+check('空闲态不得显示武装文案', css.indexOf('visibility: hidden') >= 0);
+
 /* The pill must advertise Enter-to-send and light up on hover, both in CSS. */
 check('军械态必须由 :has() 驱动', css.indexOf(':has(button[aria-busy]:not([aria-haspopup]):not(:disabled):hover)') >= 0);
 check('军械态必须有实心底色', css.indexOf('var(--dsw-alias-button-info-fill') >= 0);
@@ -364,11 +376,15 @@ assertEqual('必须注册一个输入框控件', registered.length, 1);
 const caption = registered.length === 0 ? null : registered[0];
 assertEqual('注册槽位', caption === null ? null : caption.spec.name, 'conversation.input.right');
 const rendered = caption === null ? null : caption.component();
-assertEqual('提示文案', rendered === null ? null : rendered.children[0], 'Enter发送');
+/* Text lives in CSS, so the component must stay empty and carry the class. */
+assertEqual('提示组件不得渲染文本节点', rendered === null ? null : rendered.children.length, 0);
 assertEqual('提示类名', rendered === null ? null : rendered.props.className, 'dsnes-hint');
+assertEqual('提示必须对无障碍树隐藏', rendered === null ? null : rendered.props['aria-hidden'], 'true');
 
 check('必须暴露调试句柄', typeof window.__dshNoEnterSend === 'object' && window.__dshNoEnterSend !== null);
-assertEqual('调试句柄版本', window.__dshNoEnterSend === undefined ? null : window.__dshNoEnterSend.version, 2);
+assertEqual('调试句柄版本', window.__dshNoEnterSend === undefined ? null : window.__dshNoEnterSend.version, 3);
+assertEqual('调试句柄必须报告空闲文案', window.__dshNoEnterSend === undefined ? null : window.__dshNoEnterSend.hint(), '已屏蔽Enter发送');
+assertEqual('调试句柄必须报告武装文案', window.__dshNoEnterSend === undefined ? null : window.__dshNoEnterSend.armed(), '点击Enter发送');
 
 /* --- composer fixture ---------------------------------------------------- */
 
@@ -542,10 +558,12 @@ function createComposer() {
 
 {
   documentElement.lang = 'en-US';
-  check('英文环境提示必须切换', window.__dshNoEnterSend.hint() === 'Enter to send');
+  check('英文环境提示必须切换', window.__dshNoEnterSend.hint() === 'Enter is blocked');
+  check('英文环境武装提示必须切换', window.__dshNoEnterSend.armed() === 'Press Enter to send');
   check('英文环境换行提示必须切换', window.__dshNoEnterSend.newline() === 'Enter = new line');
   documentElement.lang = 'zh-CN';
-  check('中文环境提示必须保持', window.__dshNoEnterSend.hint() === 'Enter发送');
+  check('中文环境提示必须保持', window.__dshNoEnterSend.hint() === '已屏蔽Enter发送');
+  check('中文环境武装提示必须保持', window.__dshNoEnterSend.armed() === '点击Enter发送');
   check('中文环境换行提示必须保持', window.__dshNoEnterSend.newline() === 'Enter 换行');
 }
 

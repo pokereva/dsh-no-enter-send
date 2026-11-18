@@ -7,9 +7,9 @@
 
 - **平时 Enter 换行**：不碰鼠标时按 Enter 就是换行，写长 prompt、贴代码、输入法选词都不会误发。
 - **悬停即解锁**：鼠标移到发送按钮上，Enter 立刻恢复成「发送」——想连着敲 Enter 发送时，手不用离开键盘。
-- **提示就在按钮旁**：发送按钮左侧常驻一枚高亮胶囊「Enter发送」，鼠标悬上去时它变成实心蓝底，明确告诉你「现在 Enter 能发了」。输入框为空时，占位符后缀显示「Enter 换行」。
+- **提示会说人话**：发送按钮左侧常驻一枚胶囊，平时写「已屏蔽Enter发送」——它说的是此刻真会发生的事；鼠标移到发送按钮上，文案当场变成「点击Enter发送」并变成实心蓝底，明确告诉你现在按 Enter 就能发。输入框为空时，占位符后缀显示「Enter 换行」。
 
-![行为示意：常驻的「Enter发送」胶囊、悬停后实心高亮、输入框为空时的「Enter 换行」提示](https://raw.githubusercontent.com/pokereva/dsh-no-enter-send/main/docs/preview.png)
+![行为示意：平时胶囊写「已屏蔽Enter发送」，悬停后变成实心高亮的「点击Enter发送」，输入框为空时的「Enter 换行」提示](https://raw.githubusercontent.com/pokereva/dsh-no-enter-send/main/docs/preview.png)
 
 ## 为什么需要它
 
@@ -75,9 +75,9 @@ npm run check   # node --check client.js
 - **悬停解锁 = 什么都不做**。判定「鼠标是否停在发送按钮上」用 `button.matches(':hover')`，在 keydown 那一刻实时计算，没有监听器、没有状态、不会变脏。一旦成立就直接 `return`，把事件**原封不动**放行给 DSH 自己的 keymap——于是 Enter 发送、Shift+Enter 换行、`:repeat` 防连发、忙碌时 `canSubmit()` 拦截全部由官方逻辑负责，插件不需要知道发送是怎么实现的。
 - **Enter 重放成 Shift+Enter**。未悬停时，DSH 的 Enter 处理器对 shift 组合返回 `false`，于是 Lexical 插入换行节点。插件用一个 `synthetic` 标志跳过自己重放的那一次，避免自噬。
 - **按钮靠语义特征识别，不靠类名**。发送按钮没有专属 `data-*`，稳定特征是「卡片内、带 `aria-busy`、不带 `aria-haspopup` 的 `<button>`」：`[data-composer-card] button[aria-busy]:not([aria-haspopup])`。停止按钮没有 `aria-busy`，模型选择器带 `aria-haspopup="menu"`，因此唯一命中。CSS Modules 的哈希类名一个都没用到。
-- **军械态用纯 CSS 联动**。提示胶囊本身在原地；「已武装」的外观由 `[data-composer-card]:has(button[aria-busy]:not([aria-haspopup]):not(:disabled):hover) .dsnes-hint` 驱动，不需要 JS 参与，鼠标移开自动复原。
+- **军械态用纯 CSS 联动**。提示胶囊本身在原地；文案与外观都由 `[data-composer-card]:has(button[aria-busy]:not([aria-haspopup]):not(:disabled):hover) .dsnes-hint` 驱动，不需要 JS 参与，鼠标移开自动复原。
 - **只拦截编辑器区域**。事件目标先做 `closest('[data-composer-input]')`；如果目标是 `body`/`documentElement`（键盘事件没有落点时），退回用 `document.activeElement` 判断。因此对话框、重命名框、按钮上的 Enter 全部保持原生行为。
-- **提示用两处，互不抢位**。输入框为空时，在 DSH 自己的占位符节点上挂 `::after` 显示「 · Enter 换行」——说的是此刻（草稿为空、发不出去）真正会发生的事；发送按钮左侧的常驻胶囊「Enter发送」负责说明另一件事。两处文案都用 `:lang(zh)` 双规则，切换语言时即时跟随。
+- **提示说的是此刻的结果，不是卖点**。按钮左侧的胶囊有两种文案：空闲时「已屏蔽Enter发送」、武装时「点击Enter发送」。两段文字分别写在 `.dsnes-hint::before` / `::after` 的 `content` 里，叠在同一个 grid 单元上、靠 `visibility` 切换，所以胶囊宽度取两者较长的那个，鼠标来回移动时**不会抖动重排**。输入框为空时，另在 DSH 自己的占位符节点上挂 `::after` 显示「 · Enter 换行」——说的是草稿为空、点按钮也发不出去这件事。三处文案都用 `:lang(zh)` 双规则，切换语言时即时跟随。
 - **不碰哈希类名**。只使用稳定的 `data-composer-*` 属性、`:has()` 与 `--dsw-*` 主题变量，Harness 升级重排样式也不会失效。
 
 ## 文件
@@ -119,8 +119,8 @@ rc.3 上的实测结果（CDP 驱动真实指针与键盘）：
 | 悬停发送按钮后按 `Enter` | 发出消息（`POST /api/session/prompt`），输入框清空 |
 | 悬停时按 `Shift+Enter` | 仍插入换行，零网络请求 |
 | 移开鼠标后按 `Enter` | 恢复为换行，零网络请求 |
-| 提示胶囊 | 平时淡蓝底蓝字，悬停变实心蓝底白字，移开自动复原 |
-| 语言 | `<html lang="zh-CN">` 显示「Enter发送」，`en` 显示「Enter to send」 |
+| 提示胶囊 | 平时灰字「已屏蔽Enter发送」，悬停变成实心蓝底白字「点击Enter发送」，移开自动复原 |
+| 语言 | `<html lang="zh-CN">` 显示「已屏蔽Enter发送」/「点击Enter发送」，`en` 显示「Enter is blocked」/「Press Enter to send」 |
 
 不依赖哈希类名，也不依赖 composer 的内部实现，因此小版本升级通常无需改动。
 

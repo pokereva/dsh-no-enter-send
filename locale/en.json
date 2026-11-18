@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Block Enter Send",
-    "description": "Enter only inserts a line break — until the pointer rests on the send button, where Enter sends again and the \"Enter to send\" hint lights up."
+    "description": "Enter only inserts a line break and the hint beside the send button reads \"Enter is blocked\"; rest the pointer on that button and Enter sends again, with the hint turning into a highlighted \"Press Enter to send\"."
   }
 }

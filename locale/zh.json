@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "屏蔽 Enter 发送",
-    "description": "Enter 平时只换行、不发送；鼠标停在发送按钮上时 Enter 恢复为发送，按钮旁的「Enter发送」提示会高亮。"
+    "description": "Enter 平时只换行、不发送，按钮旁写着「已屏蔽Enter发送」；鼠标停在发送按钮上时 Enter 恢复为发送，提示变成高亮的「点击Enter发送」。"
   }
 }
