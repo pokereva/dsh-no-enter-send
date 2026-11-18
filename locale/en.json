@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Block Enter Send",
-    "description": "Enter can no longer send a message — only the send button does. Enter inserts a line break, and the input box says so in gray."
+    "description": "Enter only inserts a line break — until the pointer rests on the send button, where Enter sends again and the \"Enter to send\" hint lights up."
   }
 }

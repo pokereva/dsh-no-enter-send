@@ -49,6 +49,10 @@ class FakeElement {
     this.dispatched = [];
     this.textContent = '';
     this.className = '';
+    /* Real DOM reflects the disabled *property*, which React writes directly. */
+    this.disabled = false;
+    /* Interaction pseudo-state the harness sets by hand, e.g. for :hover. */
+    this.__hover = false;
   }
 
   setAttribute(name, value) {
@@ -104,6 +108,10 @@ class FakeElement {
     return null;
   }
 
+  matches(selector) {
+    return matchesSelector(this, selector);
+  }
+
   dispatchEvent(event) {
     event.target = this;
     this.dispatched.push(event);
@@ -112,18 +120,55 @@ class FakeElement {
   }
 }
 
-/* Selector support intentionally limited to what the plugin actually queries:
-   tag, [attr], tag[attr], [attr="value"], tag[attr="value"]. */
-const SELECTOR = /^([a-zA-Z0-9]*)(?:\[([-\w]+)(?:="([^"]*)")?\])?$/;
+/* Selector support covers what the plugin queries: tag, [attr], tag[attr],
+   [attr="value"], and the compact `:not(...)` / `:disabled` / `:hover` subset
+   used by the send-button probe. Compound selectors are split on top-level
+   whitespace so a descendant combinator ("a b") walks ancestors. */
+const COMPOUND = /^([a-zA-Z0-9]*)((?:\[[-\w]+(?:="[^"]*")?\]|:not\([^()]*\)|:disabled|:hover)*)$/;
+const PART_SOURCE = '\\[([-\\w]+)(?:="([^"]*)")?\\]|:(not)\\(([^()]*)\\)|:(disabled|hover)';
+
+function matchCompound(element, compound) {
+  const head = COMPOUND.exec(compound);
+  if (head === null) throw new Error('harness: unsupported selector ' + compound);
+  if (head[1] !== '' && element.tagName !== head[1].toUpperCase()) return false;
+  /* A fresh matcher per call: `:not(...)` recurses, and a shared /g regex would
+     have its lastIndex reset by the inner scan. */
+  const partPattern = new RegExp(PART_SOURCE, 'g');
+  let part;
+  while ((part = partPattern.exec(head[2])) !== null) {
+    if (part[1] !== undefined) {
+      if (!element.hasAttribute(part[1])) return false;
+      if (part[2] !== undefined && element.getAttribute(part[1]) !== part[2]) return false;
+      continue;
+    }
+    if (part[3] === 'not') {
+      if (matchesSelector(element, part[4])) return false;
+      continue;
+    }
+    if (part[5] === 'disabled') {
+      if (element.disabled !== true) return false;
+      continue;
+    }
+    if (part[5] === 'hover') {
+      if (element.__hover !== true) return false;
+      continue;
+    }
+  }
+  return true;
+}
 
 function matchesSelector(element, selector) {
-  const match = SELECTOR.exec(String(selector).trim());
-  if (match === null) throw new Error('harness: unsupported selector ' + selector);
-  const [, tag, attr, value] = match;
-  if (tag !== undefined && tag !== '' && element.tagName !== tag.toUpperCase()) return false;
-  if (attr !== undefined) {
-    if (!element.hasAttribute(attr)) return false;
-    if (value !== undefined && element.getAttribute(attr) !== value) return false;
+  const text = String(selector).trim();
+  const parts = text.split(/\s+/).filter((part) => part !== '');
+  if (parts.length === 0) throw new Error('harness: unsupported selector ' + selector);
+  if (!matchCompound(element, parts[parts.length - 1])) return false;
+  let node = element.parentElement;
+  for (let index = parts.length - 2; index >= 0; index -= 1) {
+    while (node !== null && node !== undefined && !matchCompound(node, parts[index])) {
+      node = node.parentElement;
+    }
+    if (node === null || node === undefined) return false;
+    node = node.parentElement;
   }
   return true;
 }
@@ -303,24 +348,27 @@ if (plugin !== null && typeof plugin.apply === 'function') plugin.apply(ctx);
 const styleTag = document.querySelector('style[data-plugin-css="dsh-no-enter-send"]');
 check('必须注入样式表', styleTag !== null);
 const css = styleTag === null ? '' : styleTag.textContent;
-check('样式必须包含输入框灰色提示', css.indexOf('已屏蔽Enter 发送') >= 0, css.slice(0, 120));
+check('样式必须包含输入框提示', css.indexOf('Enter 换行') >= 0, css.slice(0, 120));
 check('提示必须挂在占位符节点上', css.indexOf('[data-composer-placeholder]::after') >= 0);
 check('样式必须禁用指针事件', css.indexOf('pointer-events: none') >= 0);
 /* The shell ships lang="en" and switches to zh-CN later, so the suffix cannot be
    frozen at load time; both languages must be present as :lang() rules. */
 check('占位符提示必须按语言分别声明', css.indexOf('[data-composer-placeholder]:lang(zh)::after') >= 0);
-check('占位符英文提示必须内置', css.indexOf('Enter is blocked') >= 0);
-check('占位符中文提示必须内置', css.indexOf('已屏蔽Enter 发送') >= 0);
+check('占位符英文提示必须内置', css.indexOf('Enter = new line') >= 0);
+check('占位符中文提示必须内置', css.indexOf('Enter 换行') >= 0);
+/* The pill must advertise Enter-to-send and light up on hover, both in CSS. */
+check('军械态必须由 :has() 驱动', css.indexOf(':has(button[aria-busy]:not([aria-haspopup]):not(:disabled):hover)') >= 0);
+check('军械态必须有实心底色', css.indexOf('var(--dsw-alias-button-info-fill') >= 0);
 
 assertEqual('必须注册一个输入框控件', registered.length, 1);
 const caption = registered.length === 0 ? null : registered[0];
 assertEqual('注册槽位', caption === null ? null : caption.spec.name, 'conversation.input.right');
 const rendered = caption === null ? null : caption.component();
-assertEqual('提示文案', rendered === null ? null : rendered.children[0], '已屏蔽Enter 发送');
+assertEqual('提示文案', rendered === null ? null : rendered.children[0], 'Enter发送');
 assertEqual('提示类名', rendered === null ? null : rendered.props.className, 'dsnes-hint');
 
 check('必须暴露调试句柄', typeof window.__dshNoEnterSend === 'object' && window.__dshNoEnterSend !== null);
-assertEqual('调试句柄版本', window.__dshNoEnterSend === undefined ? null : window.__dshNoEnterSend.version, 1);
+assertEqual('调试句柄版本', window.__dshNoEnterSend === undefined ? null : window.__dshNoEnterSend.version, 2);
 
 /* --- composer fixture ---------------------------------------------------- */
 
@@ -331,6 +379,17 @@ function createComposer() {
   input.setAttribute('data-composer-input', '');
   input.__lexicalEditor = {};
   card.appendChild(input);
+  /* The real send button: a <button> with aria-busy and no popup role. */
+  const send = document.createElement('button');
+  send.setAttribute('type', 'button');
+  send.setAttribute('aria-busy', 'false');
+  card.appendChild(send);
+  /* A decoy that must never be mistaken for the send button. */
+  const popup = document.createElement('button');
+  popup.setAttribute('type', 'button');
+  popup.setAttribute('aria-busy', 'false');
+  popup.setAttribute('aria-haspopup', 'menu');
+  card.appendChild(popup);
   body.appendChild(card);
   const counts = { sends: 0, breaks: 0 };
   /* Stand-in for the composer's own keymap: a plain Enter submits, a
@@ -341,7 +400,7 @@ function createComposer() {
     if (event.shiftKey === true) counts.breaks += 1;
     else counts.sends += 1;
   });
-  return { card, input, counts };
+  return { card, input, send, popup, counts };
 }
 
 /* --- Enter is a line break, never a send -------------------------------- */
@@ -387,6 +446,75 @@ function createComposer() {
   body.removeChild(menu);
 }
 
+/* --- hover on the send button hands Enter back to the composer ---------- */
+
+{
+  const { input, send, counts } = createComposer();
+  send.__hover = true;
+  assertEqual('悬停时调试句柄必须报告已武装', window.__dshNoEnterSend.hover(), true);
+  const event = fireKeyDown(input, { key: 'Enter', code: 'Enter', keyCode: 13, cancelable: true });
+  assertEqual('悬停发送按钮时 Enter 不能被打断', event.defaultPrevented, false);
+  assertEqual('悬停发送按钮时 Enter 必须触发送', counts.sends, 1);
+  assertEqual('悬停发送按钮时 Enter 不能重放换行', input.dispatched.length, 0);
+  assertEqual('悬停发送按钮时不产生换行', counts.breaks, 0);
+  send.__hover = false;
+  assertEqual('移开后必须解除武装', window.__dshNoEnterSend.hover(), false);
+  const after = fireKeyDown(input, { key: 'Enter', code: 'Enter', keyCode: 13, cancelable: true });
+  assertEqual('移开后 Enter 必须恢复拦截', after.defaultPrevented, true);
+  assertEqual('移开后 Enter 必须变回换行', counts.sends, 1);
+  assertEqual('移开后换行数加一', counts.breaks, 1);
+}
+
+/* --- a disabled send button never arms --------------------------------- */
+
+{
+  const { input, send, counts } = createComposer();
+  send.disabled = true;
+  send.__hover = true;
+  assertEqual('禁用按钮悬停不得武装', window.__dshNoEnterSend.hover(), false);
+  const event = fireKeyDown(input, { key: 'Enter', code: 'Enter', keyCode: 13, cancelable: true });
+  assertEqual('禁用按钮悬停时 Enter 必须被拦截', event.defaultPrevented, true);
+  assertEqual('禁用按钮悬停时不能发送', counts.sends, 0);
+  assertEqual('禁用按钮悬停时必须换行', counts.breaks, 1);
+}
+
+/* --- only the real send button arms, not popup triggers ---------------- */
+
+{
+  const { input, popup, counts } = createComposer();
+  popup.__hover = true;
+  assertEqual('弹出菜单按钮不得被当成发送按钮', window.__dshNoEnterSend.hover(), false);
+  const event = fireKeyDown(input, { key: 'Enter', code: 'Enter', keyCode: 13, cancelable: true });
+  assertEqual('弹出菜单按钮悬停时 Enter 必须被拦截', event.defaultPrevented, true);
+  assertEqual('弹出菜单按钮悬停时不能发送', counts.sends, 0);
+  assertEqual('弹出菜单按钮悬停时必须换行', counts.breaks, 1);
+}
+
+/* --- armed composer still honours Shift+Enter as a break --------------- */
+
+{
+  const { input, send, counts } = createComposer();
+  send.__hover = true;
+  const event = fireKeyDown(input, { key: 'Enter', code: 'Enter', keyCode: 13, shiftKey: true, cancelable: true });
+  assertEqual('武装态下 Shift+Enter 必须放行', event.defaultPrevented, false);
+  assertEqual('武装态下 Shift+Enter 必须换行', counts.breaks, 1);
+  assertEqual('武装态下 Shift+Enter 不能发送', counts.sends, 0);
+}
+
+/* --- an open slash menu outranks the armed state ----------------------- */
+
+{
+  const { input, send } = createComposer();
+  send.__hover = true;
+  const menu = document.createElement('div');
+  menu.setAttribute('data-trigger-menu', '');
+  body.appendChild(menu);
+  const event = fireKeyDown(input, { key: 'Enter', code: 'Enter', keyCode: 13, cancelable: true });
+  assertEqual('菜单打开时即使悬停也必须放行给菜单', event.defaultPrevented, false);
+  assertEqual('菜单打开时不得重放换行', input.dispatched.length, 0);
+  body.removeChild(menu);
+}
+
 /* --- Enter outside the composer keeps native behaviour ------------------ */
 
 {
@@ -414,9 +542,11 @@ function createComposer() {
 
 {
   documentElement.lang = 'en-US';
-  check('英文环境提示必须切换', window.__dshNoEnterSend.hint() === 'Enter is blocked · click to send');
+  check('英文环境提示必须切换', window.__dshNoEnterSend.hint() === 'Enter to send');
+  check('英文环境换行提示必须切换', window.__dshNoEnterSend.newline() === 'Enter = new line');
   documentElement.lang = 'zh-CN';
-  check('中文环境提示必须保持', window.__dshNoEnterSend.hint() === '已屏蔽Enter 发送');
+  check('中文环境提示必须保持', window.__dshNoEnterSend.hint() === 'Enter发送');
+  check('中文环境换行提示必须保持', window.__dshNoEnterSend.newline() === 'Enter 换行');
 }
 
 /* --- teardown ---------------------------------------------------------- */

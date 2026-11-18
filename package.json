@@ -1,7 +1,7 @@
 {
   "name": "dsh-no-enter-send",
-  "version": "1.0.2",
-  "description": "Blocks Enter from sending in the DSH composer: Enter becomes a line break, messages leave only from the send button, and the input box says so in gray.",
+  "version": "1.1.0",
+  "description": "Enter inserts a line break instead of sending in the DSH composer — until the pointer rests on the send button, where Enter sends again and a highlighted \"Enter to send\" hint lights up.",
   "keywords": [
     "deepseek",
     "harness",
